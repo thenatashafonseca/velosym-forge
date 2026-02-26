@@ -1,17 +1,41 @@
 {
   "name": "velosym-forge",
   "version": "0.1.0",
-  "description": "Anti-Slop Linter — scans for AI-generated code smell",
+  "description": "Anti-Slop Linter — scans for AI-generated code smell and enforces brutalist code standards",
+  "main": "dist/engine.js",
+  "types": "dist/engine.d.ts",
   "bin": {
     "velosym-forge": "./dist/cli.js"
   },
+  "files": [
+    "dist",
+    "README.md"
+  ],
   "scripts": {
     "build": "tsc",
+    "prepublishOnly": "npm run build",
     "lint": "node dist/cli.js",
     "dev": "ts-node src/cli.ts"
   },
-  "keywords": ["linter", "ai-slop", "code-quality"],
+  "keywords": [
+    "linter",
+    "ai-slop",
+    "code-quality",
+    "anti-slop",
+    "brutalist-code",
+    "ci",
+    "static-analysis"
+  ],
+  "author": "Velosym",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/thenatashafonseca/velosym-forge.git"
+  },
+  "homepage": "https://github.com/thenatashafonseca/velosym-forge#readme",
+  "engines": {
+    "node": ">=18"
+  },
   "devDependencies": {
     "typescript": "^5.3.0",
     "@types/node": "^20.0.0"

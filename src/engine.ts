@@ -26,3 +26,27 @@ export function scanFile(filePath: string): FileResult {
 
   return { file: filePath, violations };
 }
+
+export function fixFile(filePath: string): { fixed: number } {
+  const content = fs.readFileSync(filePath, "utf-8");
+  const lines = content.split("\n");
+  const result = scanFile(filePath);
+  const fixableLines = new Set(
+    result.violations.filter((v) => v.fixable).map((v) => v.line)
+  );
+
+  if (fixableLines.size === 0) return { fixed: 0 };
+
+  // Remove fixable lines, then collapse consecutive blank lines
+  const filtered = lines.filter((_, i) => !fixableLines.has(i + 1));
+  const collapsed: string[] = [];
+  for (const line of filtered) {
+    if (line.trim() === "" && collapsed.length > 0 && collapsed[collapsed.length - 1].trim() === "") {
+      continue;
+    }
+    collapsed.push(line);
+  }
+
+  fs.writeFileSync(filePath, collapsed.join("\n"), "utf-8");
+  return { fixed: fixableLines.size };
+}

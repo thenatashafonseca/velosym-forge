@@ -1,12 +1,9 @@
-/**
- * Each rule: scan a line (with context) and return a violation or null.
- */
-
 export interface Violation {
   rule: string;
   message: string;
   line: number;
   text: string;
+  fixable?: boolean;
 }
 
 export interface Rule {
@@ -39,16 +36,32 @@ const slopPhrases = [
   /^\s*\/\*\s*eslint-disable\s*\*\//,
 ];
 
+// Common Node.js built-in modules
+const NODE_BUILTINS = new Set([
+  "assert", "buffer", "child_process", "cluster", "crypto", "dgram", "dns",
+  "events", "fs", "http", "http2", "https", "net", "os", "path", "perf_hooks",
+  "querystring", "readline", "repl", "stream", "string_decoder", "timers",
+  "tls", "tty", "url", "util", "v8", "vm", "worker_threads", "zlib",
+  "fs/promises", "stream/promises", "dns/promises", "readline/promises",
+  "timers/promises",
+]);
+
+// Known hallucinated packages that AI models commonly invent
+const HALLUCINATED_PACKAGES = [
+  /^@types\/.*\/.*\//, // deeply nested @types that don't exist
+  /^node:internal\//,  // node internal modules aren't importable
+];
+
 export const rules: Rule[] = [
   {
     name: "no-redundant-comment",
     check(line, lineNum) {
       if (redundantCommentPattern.test(line)) {
-        return { rule: this.name, message: "Redundant comment describes what code already says", line: lineNum, text: line.trim() };
+        return { rule: this.name, message: "Redundant comment describes what code already says", line: lineNum, text: line.trim(), fixable: true };
       }
       for (const pat of obviousCommentPatterns) {
         if (pat.test(line)) {
-          return { rule: this.name, message: "Comment states the obvious", line: lineNum, text: line.trim() };
+          return { rule: this.name, message: "Comment states the obvious", line: lineNum, text: line.trim(), fixable: true };
         }
       }
       return null;
@@ -59,7 +72,7 @@ export const rules: Rule[] = [
     check(line, lineNum) {
       for (const pat of slopPhrases) {
         if (pat.test(line)) {
-          return { rule: this.name, message: "AI slop marker detected", line: lineNum, text: line.trim() };
+          return { rule: this.name, message: "AI slop marker detected", line: lineNum, text: line.trim(), fixable: true };
         }
       }
       return null;
@@ -68,12 +81,65 @@ export const rules: Rule[] = [
   {
     name: "no-excessive-comments",
     check(line, lineNum, allLines) {
-      // Flag files where >40% of lines are comments (checked on last line only)
       if (lineNum !== allLines.length) return null;
       const commentLines = allLines.filter((l) => /^\s*(\/\/|\/\*|\*)/.test(l)).length;
       const ratio = commentLines / allLines.length;
       if (ratio > 0.4 && allLines.length > 10) {
         return { rule: this.name, message: `${Math.round(ratio * 100)}% of lines are comments — excessive for production code`, line: lineNum, text: "(file-level)" };
+      }
+      return null;
+    },
+  },
+  {
+    name: "no-hallucinated-imports",
+    check(line, lineNum, allLines) {
+      // Match import/require statements
+      const importMatch = line.match(/^\s*import\s+.*?from\s+['"]([^'"]+)['"]/);
+      const requireMatch = line.match(/require\(\s*['"]([^'"]+)['"]\s*\)/);
+      const specifier = importMatch?.[1] || requireMatch?.[1];
+      if (!specifier) return null;
+
+      // Skip relative imports and node: protocol builtins
+      if (specifier.startsWith(".") || specifier.startsWith("/")) return null;
+      if (specifier.startsWith("node:")) {
+        const mod = specifier.slice(5);
+        if (!NODE_BUILTINS.has(mod)) {
+          return { rule: this.name, message: `Hallucinated node built-in: "${specifier}"`, line: lineNum, text: line.trim() };
+        }
+        return null;
+      }
+
+      // Check against known hallucinated patterns
+      for (const pat of HALLUCINATED_PACKAGES) {
+        if (pat.test(specifier)) {
+          return { rule: this.name, message: `Likely hallucinated import: "${specifier}"`, line: lineNum, text: line.trim() };
+        }
+      }
+
+      return null;
+    },
+  },
+  {
+    name: "no-dead-code",
+    check(line, lineNum) {
+      // Detect commented-out code (not prose comments)
+      const commentBody = line.match(/^\s*\/\/\s*(.+)/)?.[1];
+      if (!commentBody) return null;
+
+      // Heuristics: line looks like code, not prose
+      const codePatterns = [
+        /^(const|let|var|function|class|if|else|for|while|return|import|export|switch|case|try|catch)\s/,
+        /^[a-zA-Z_$][\w$]*\s*\(/, // function call
+        /^[a-zA-Z_$][\w$]*\s*=/, // assignment
+        /^\}/, // closing brace
+        /^await\s/,
+        /^throw\s/,
+      ];
+
+      for (const pat of codePatterns) {
+        if (pat.test(commentBody.trim())) {
+          return { rule: this.name, message: "Commented-out code detected (dead code)", line: lineNum, text: line.trim(), fixable: true };
+        }
       }
       return null;
     },
