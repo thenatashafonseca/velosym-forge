@@ -1,0 +1,24 @@
+name: "Velosym Forge Anti-Slop Linter"
+description: "Enforces brutalist code standards — no slop allowed."
+inputs:
+  targets:
+    description: "File glob patterns to scan (space-separated)"
+    required: true
+runs:
+  using: "composite"
+  steps:
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: "20"
+    - name: Install dependencies
+      shell: bash
+      run: npm ci
+      working-directory: ${{ github.action_path }}
+    - name: Build
+      shell: bash
+      run: npm run build
+      working-directory: ${{ github.action_path }}
+    - name: Run Anti-Slop Linter
+      shell: bash
+      run: node ${{ github.action_path }}/dist/cli.js ${{ inputs.targets }}
